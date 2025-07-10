@@ -1,0 +1,11 @@
+
+  // Rotas para serviços de motorista
+  app.get("/api/servicos-motorista", requireAuth, async (req, res) => {
+    try {
+      const servicos = await storage.getServicosMotorista();
+      res.json(servicos);
+    } catch (error) {
+      console.error("Erro ao buscar serviços de motorista:", error);
+      res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
