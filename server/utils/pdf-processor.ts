@@ -1,14 +1,17 @@
 /**
- * PROCESSADOR DE PDF CONSOLIDADO
+ * PROCESSADOR DE PDF CONSOLIDADO - OTIMIZADO PARA WINDOWS
  * 
  * Utilitário para processar múltiplos documentos e gerar PDF consolidado
  * Converte imagens para PDF e concatena PDFs existentes
+ * 
+ * NOTA: Usando jimp em vez de sharp para melhor compatibilidade com Windows
+ * (sharp requer compilação nativa que pode falhar no Windows)
  */
 
 import fs from 'fs/promises';
 import path from 'path';
 import { PDFDocument } from 'pdf-lib';
-import sharp from 'sharp';
+import Jimp from 'jimp';
 
 interface DocumentoProcessavel {
   id: number;
@@ -50,8 +53,8 @@ export async function processarDocumentos(
         if (documento.tipo.toLowerCase() === '.pdf') {
           // Processar PDF existente
           await adicionarPdfExistente(pdfDoc, documento.caminho);
-        } else if (['.jpg', '.jpeg', '.png', '.webp'].includes(documento.tipo.toLowerCase())) {
-          // Processar imagem
+        } else if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'].includes(documento.tipo.toLowerCase())) {
+          // Processar imagem (jimp suporta mais formatos que sharp)
           await adicionarImagemComoPdf(pdfDoc, documento.caminho);
         } else {
           console.log(`Tipo não suportado: ${documento.tipo}`);
@@ -120,19 +123,25 @@ async function adicionarPdfExistente(pdfDoc: PDFDocument, caminhoArquivo: string
 
 /**
  * Converte imagem para PDF e adiciona ao documento principal
+ * OTIMIZADO PARA WINDOWS: Usando jimp em vez de sharp
  */
 async function adicionarImagemComoPdf(pdfDoc: PDFDocument, caminhoImagem: string): Promise<void> {
   try {
-    // Processar imagem com Sharp para otimizar
-    const imagemBuffer = await sharp(caminhoImagem)
-      .jpeg({ quality: 85 }) // Comprimir para JPEG com qualidade 85%
-      .toBuffer();
+    // Processar imagem com Jimp (compatível com Windows)
+    console.log(`Carregando imagem: ${caminhoImagem}`);
+    const imagem = await Jimp.read(caminhoImagem);
+    
+    // Otimizar qualidade (equivalente ao sharp)
+    imagem.quality(85);
+    
+    // Converter para JPEG buffer
+    const imagemBuffer = await imagem.getBufferAsync(Jimp.MIME_JPEG);
     
     // Incorporar imagem no PDF
-    const imagem = await pdfDoc.embedJpg(imagemBuffer);
+    const imagemPdf = await pdfDoc.embedJpg(imagemBuffer);
     
     // Calcular dimensões mantendo proporção
-    const { width, height } = imagem.scale(1);
+    const { width, height } = imagemPdf.scale(1);
     const pageWidth = 595; // A4 width in points
     const pageHeight = 842; // A4 height in points
     
@@ -158,12 +167,14 @@ async function adicionarImagemComoPdf(pdfDoc: PDFDocument, caminhoImagem: string
     
     // Criar nova página e adicionar imagem
     const pagina = pdfDoc.addPage([pageWidth, pageHeight]);
-    pagina.drawImage(imagem, {
+    pagina.drawImage(imagemPdf, {
       x,
       y,
       width: imgWidth,
       height: imgHeight,
     });
+    
+    console.log(`Imagem adicionada com sucesso: ${path.basename(caminhoImagem)}`);
     
   } catch (error) {
     console.error(`Erro ao adicionar imagem ${caminhoImagem}:`, error);
@@ -181,9 +192,11 @@ export function gerarNomePDFConsolidado(ordemServicoId: number): string {
 
 /**
  * Busca documentos processáveis (PDF e imagens)
+ * ATUALIZADO: Suporte adicional para formatos que jimp consegue processar
  */
 export function buscarDocumentosProcessaveis(documentos: DocumentoProcessavel[]): DocumentoProcessavel[] {
-  const tiposSuportados = ['.pdf', '.jpg', '.jpeg', '.png', '.webp'];
+  // jimp suporta: JPEG, PNG, BMP, TIFF, GIF
+  const tiposSuportados = ['.pdf', '.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif', '.tiff'];
   
   return documentos.filter(doc => 
     tiposSuportados.includes(doc.tipo.toLowerCase()) && 
