@@ -1,20 +1,14 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
-import ws from "ws";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import Database from "better-sqlite3";
 import * as schema from "@shared/schema";
 import { createMySQLConnection } from "./mysql-config";
 
-neonConfig.webSocketConstructor = ws;
-
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
-}
+// Para desenvolvimento local, usar SQLite
+const sqliteDb = new Database("./local-database.db");
 
 // Função para determinar e criar conexão com banco
 function createDatabaseConnection() {
-  const dbType = process.env.DB_TYPE || 'postgresql';
+  const dbType = process.env.DB_TYPE || 'sqlite';
   
   console.log(`Configurando conexão para: ${dbType}`);
   
@@ -23,13 +17,22 @@ function createDatabaseConnection() {
     return createMySQLConnection();
   }
   
-  // PostgreSQL/Neon (padrão)
-  console.log('Usando PostgreSQL/Neon como banco de dados');
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  return drizzle({ client: pool, schema });
+  if (dbType === 'postgresql' && process.env.DATABASE_URL) {
+    console.log('Usando PostgreSQL/Neon como banco de dados');
+    const { Pool, neonConfig } = require('@neondatabase/serverless');
+    const ws = require("ws");
+    neonConfig.webSocketConstructor = ws;
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const { drizzle: drizzlePg } = require('drizzle-orm/neon-serverless');
+    return drizzlePg({ client: pool, schema });
+  }
+  
+  // SQLite (padrão para desenvolvimento)
+  console.log('Usando SQLite como banco de dados');
+  return drizzle(sqliteDb, { schema });
 }
 
 export const db = createDatabaseConnection();
 
-// Manter export do pool para compatibilidade com PostgreSQL
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// Export do SQLite db para compatibilidade
+export const sqliteDatabase = sqliteDb;
